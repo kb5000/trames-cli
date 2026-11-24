@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/trames-cli-common"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.101"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/kb5000/trames-cli"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[profile.release]
+overflow-checks = true
+lto = "thin"

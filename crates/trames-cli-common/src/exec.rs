@@ -5,7 +5,10 @@ use std::{
     collections::VecDeque,
     fs,
     io::{self, Read, Write},
-    os::{fd::AsRawFd, unix::net::UnixStream},
+    os::{
+        fd::{AsFd, AsRawFd},
+        unix::net::UnixStream,
+    },
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -29,7 +32,11 @@ fn queue(outgoing: &mut VecDeque<u8>, kind: u8, bytes: &[u8]) {
     outgoing.extend(bytes);
 }
 pub fn run(console: &Path, request: Request) -> io::Result<u8> {
-    run_input(console, request, io::stdin())
+    run_input(
+        console,
+        request,
+        fs::File::from(io::stdin().as_fd().try_clone_to_owned()?),
+    )
 }
 pub fn run_input(console: &Path, request: Request, input: impl Read + AsRawFd) -> io::Result<u8> {
     let signals = crate::signals::Signals::install()?;

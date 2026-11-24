@@ -16,10 +16,25 @@ static PIPE: OnceLock<(UnixStream, UnixStream)> = OnceLock::new();
 static WRITE: AtomicI32 = AtomicI32::new(-1);
 static PENDING: AtomicU64 = AtomicU64::new(0);
 extern "C" fn receive(signal: libc::c_int) {
+    // write() may report EAGAIN; preserve interrupted libc callers' errno.
+    #[cfg(target_os = "linux")]
+    let errno = unsafe { libc::__errno_location() };
+    #[cfg(target_vendor = "apple")]
+    let errno = unsafe { libc::__error() };
+    #[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+    let errno = std::ptr::null_mut::<i32>();
+    let saved = if errno.is_null() {
+        0
+    } else {
+        unsafe { errno.read() }
+    };
     PENDING.fetch_or(1u64 << signal, Ordering::Relaxed);
     let fd = WRITE.load(Ordering::Relaxed);
     if fd >= 0 {
         unsafe { libc::write(fd, b"s".as_ptr().cast(), 1) };
+    }
+    if !errno.is_null() {
+        unsafe { errno.write(saved) }
     }
 }
 /// Only interactive frontend invocations install handlers. Programmatic exec

@@ -2,13 +2,16 @@
 //! Shared terminal attach/list clients. Native signals wake the same CLI thread.
 use std::{
     io::{self, Read, Write},
-    os::{fd::AsRawFd, unix::net::UnixStream},
+    os::{
+        fd::{AsFd, AsRawFd},
+        unix::net::UnixStream,
+    },
     path::Path,
     time::Duration,
 };
 pub const LIST: &[u8; 8] = b"TRMLIST1";
 pub const MAGIC: &[u8; 8] = b"TRAMES02";
-fn frame(peer: &mut UnixStream, kind: u8, bytes: &[u8]) -> io::Result<()> {
+pub fn write_frame(peer: &mut UnixStream, kind: u8, bytes: &[u8]) -> io::Result<()> {
     peer.write_all(&[kind])?;
     peer.write_all(&(bytes.len() as u32).to_be_bytes())?;
     peer.write_all(bytes)
@@ -31,6 +34,7 @@ pub fn attach(path: &Path, terminal: u64) -> io::Result<()> {
     let signals = crate::signals::Signals::install()?;
     let _raw = crate::terminal::RawTerminal::enter(true)?;
     eprintln!("Attached terminal {id}. Ctrl+] detaches; reconnect with session attach {id}.\r");
+    let mut input = std::fs::File::from(io::stdin().as_fd().try_clone_to_owned()?);
     let mut size = None;
     let mut bytes = [0; 4096];
     loop {
@@ -45,7 +49,7 @@ pub fn attach(path: &Path, terminal: u64) -> io::Result<()> {
                 let mut b = [0; 4];
                 b[..2].copy_from_slice(&r.to_be_bytes());
                 b[2..].copy_from_slice(&c.to_be_bytes());
-                frame(&mut peer, 1, &b)?;
+                write_frame(&mut peer, 1, &b)?;
             }
         }
         let mut fds = [
@@ -55,7 +59,7 @@ pub fn attach(path: &Path, terminal: u64) -> io::Result<()> {
                 revents: 0,
             },
             libc::pollfd {
-                fd: libc::STDIN_FILENO,
+                fd: input.as_raw_fd(),
                 events: libc::POLLIN,
                 revents: 0,
             },
@@ -82,18 +86,18 @@ pub fn attach(path: &Path, terminal: u64) -> io::Result<()> {
             io::stdout().flush()?;
         }
         if fds[1].revents != 0 {
-            let n = io::stdin().read(&mut bytes)?;
+            let n = input.read(&mut bytes)?;
             if n == 0 {
                 return Ok(());
             }
             if let Some(at) = bytes[..n].iter().position(|b| *b == 0x1d) {
                 if at != 0 {
-                    frame(&mut peer, 0, &bytes[..at])?;
+                    write_frame(&mut peer, 0, &bytes[..at])?;
                 }
-                frame(&mut peer, 2, &[])?;
+                write_frame(&mut peer, 2, &[])?;
                 return Ok(());
             }
-            frame(&mut peer, 0, &bytes[..n])?;
+            write_frame(&mut peer, 0, &bytes[..n])?;
         }
     }
 }

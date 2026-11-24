@@ -39,15 +39,13 @@ pub fn run(console: &Path, request: Request) -> io::Result<u8> {
     )
 }
 pub fn run_input(console: &Path, request: Request, input: impl Read + AsRawFd) -> io::Result<u8> {
-    let signals = crate::signals::Signals::install()?;
-    run_inner(
+    run_interactive_streams_deadline(
         console,
         request,
         input,
         &mut io::stdout(),
         &mut io::stderr(),
         None,
-        Some(&signals),
     )
 }
 pub fn capture(console: &Path, request: Request) -> io::Result<(u8, Vec<u8>, Vec<u8>)> {
@@ -80,6 +78,27 @@ pub fn run_streams_deadline(
     deadline: Option<std::time::Instant>,
 ) -> io::Result<u8> {
     run_inner(console, request, input, stdout, stderr, deadline, None)
+}
+/// Foreground file transfers can forward signals without changing the behavior
+/// of programmatic capture clients used inside an embedding.
+pub fn run_interactive_streams_deadline(
+    console: &Path,
+    request: Request,
+    input: impl Read + AsRawFd,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+    deadline: Option<std::time::Instant>,
+) -> io::Result<u8> {
+    let signals = crate::signals::Signals::install()?;
+    run_inner(
+        console,
+        request,
+        input,
+        stdout,
+        stderr,
+        deadline,
+        Some(&signals),
+    )
 }
 fn run_inner(
     console: &Path,

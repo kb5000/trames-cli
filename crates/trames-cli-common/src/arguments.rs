@@ -38,16 +38,19 @@ pub fn parse_exec(
                     break;
                 }
                 "-t" | "--tty" => r.tty = true,
-                "--setenv" | "--cwd" | "-w" => {
+                "--setenv" | "--cwd" | "-w" | "--user" | "-u" => {
                     i += 1;
                     let value = args.get(i).ok_or("missing exec option value")?.clone();
                     if a == "--setenv" {
                         r.environment.push(value);
+                    } else if a == "--user" || a == "-u" {
+                        r.user = Some(value);
                     } else {
                         r.cwd = Some(value);
                     }
                 }
                 a if a.starts_with("--setenv=") => r.environment.push(a[9..].into()),
+                a if a.starts_with("--user=") => r.user = Some(a[7..].into()),
                 a if a.starts_with('-') => {
                     return Err(
                         format!("unknown exec option '{a}'; put -- before the command").into(),
@@ -60,7 +63,7 @@ pub fn parse_exec(
     }
     r.argv = args[i..].to_vec();
     if r.argv.is_empty() {
-        return Err("usage: trames [-e NAME] exec [-t] [--setenv KEY=VALUE] [--cwd DIR] -- COMMAND [ARG...]".into());
+        return Err("usage: trames [-e NAME] exec [-t] [-u USER] [--setenv KEY=VALUE] [--cwd DIR] -- COMMAND [ARG...]".into());
     }
     for entry in &r.environment {
         if !entry.split_once('=').is_some_and(|(k, _)| !k.is_empty()) {
@@ -73,6 +76,15 @@ pub fn parse_exec(
         .any(|a| a.contains('\0'))
     {
         return Err("arguments cannot contain NUL".into());
+    }
+    if let Some(user) = &r.user {
+        if user.is_empty()
+            || user
+                .chars()
+                .any(|c| matches!(c, ':' | '/' | '\0' | '\n' | '\r') || c.is_whitespace())
+        {
+            return Err("invalid user name".into());
+        }
     }
     if r.cwd.as_ref().is_some_and(|cwd| cwd.contains('\0')) {
         return Err("working directory cannot contain NUL".into());
@@ -108,10 +120,10 @@ impl Foreground {
                 Some("--rootfs")=>rootfs=Some(args.next().ok_or("missing rootfs directory")?),
                 Some("--pty"|"-t"|"--tty")=>options.push("-t".into()),
                 Some("--no-pty")=>options.retain(|s|s!="-t"),
-                Some(option @ ("--setenv"|"--cwd"|"-w"))=>{options.push(option.into());options.push(args.next().ok_or("missing exec option value")?);},
-                Some(option) if option.starts_with("--setenv=")=>options.push(option.into()),
+                Some(option @ ("--setenv"|"--cwd"|"-w"|"--user"|"-u"))=>{options.push(option.into());options.push(args.next().ok_or("missing exec option value")?);},
+                Some(option) if option.starts_with("--setenv=") || option.starts_with("--user=")=>options.push(option.into()),
                 None if default_command.is_some()=>break default_command.unwrap().iter().map(|s|s.to_string()).collect(),
-                _=>return Err("usage: trames run [--rootfs DIR] [--cpus N] [--timeout-ms N] [--pty] -- ELF [ARG...]".into()),
+                _=>return Err("usage: trames run [--rootfs DIR] [--cpus N] [--timeout-ms N] [--pty] [-u USER] [--cwd DIR] -- ELF [ARG...]".into()),
             }
         };
         options.push("--".into());

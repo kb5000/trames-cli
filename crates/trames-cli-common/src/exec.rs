@@ -19,6 +19,8 @@ pub const LIMIT: usize = 65536;
 pub struct Request {
     pub argv: Vec<String>,
     pub environment: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
     pub cwd: Option<String>,
     pub tty: bool,
     pub size: Option<(u16, u16)>,

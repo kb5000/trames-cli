@@ -179,9 +179,16 @@ fn foreground_options_preserve_guest_argv_and_never_create_a_host_shell() {
         arguments::Foreground::parse(strings(&["--timeout-ms", "0", "--", "true"]), None).is_err()
     );
     let shell = arguments::Foreground::parse(
-        strings(&["--rootfs", "/tmp/root"]),
+        strings(&["--rootfs", "/tmp/root", "-u", "dev", "--cwd", "/home/dev"]),
         Some(&["/bin/sh", "-l"]),
     )
     .unwrap();
     assert_eq!(shell.request.argv, ["/bin/sh", "-l"]);
+    assert_eq!(shell.request.user.as_deref(), Some("dev"));
+    assert_eq!(shell.request.cwd.as_deref(), Some("/home/dev"));
+    assert!(arguments::parse_exec(&strings(&["--user", "bad:user", "--", "id"]), false).is_err());
+    let plain = arguments::parse_exec(&strings(&["--", "id"]), false).unwrap();
+    assert_eq!(plain.user, None);
+    let wire = serde_json::to_string(&plain).unwrap();
+    assert!(!wire.contains("\"user\""));
 }
